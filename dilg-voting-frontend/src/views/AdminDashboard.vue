@@ -118,9 +118,13 @@ const sections = [
   { key: 'tally', label: 'Tally' },
   { key: 'timeline', label: 'Timeline' },
   { key: 'nominations', label: 'Nominations' },
-  { key: 'reminders', label: 'Reminders' },
   { key: 'voters', label: 'Voters' },
 ]
+
+// If a previously stored tab no longer exists (e.g., reminders hidden), default to first tab.
+if (!sections.some((s) => s.key === activeSection.value)) {
+  activeSection.value = sections[0].key
+}
 
 watch(
   () => activeSection.value,
@@ -1188,14 +1192,6 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
-
-    <div v-if="activeSection === 'reminders'" id="reminders" class="bg-gradient-to-br from-[rgba(196,151,60,0.12)] via-white to-[rgba(15,35,66,0.05)] rounded-2xl border border-[rgba(196,151,60,0.35)] p-4 sm:p-5 shadow-sm space-y-2">
-      <h3 class="text-sm font-semibold">Reminders</h3>
-      <div v-if="!reminders.length" class="text-xs text-slate-500">No reminders stored.</div>
-      <ul v-else class="text-sm text-slate-700 list-disc list-inside">
-        <li v-for="rem in reminders" :key="rem.id">{{ rem.remind_at }} - {{ rem.note }}</li>
-      </ul>
     </div>
 
     <div v-if="activeSection === 'voters'" id="voters" class="bg-gradient-to-br from-[rgba(196,151,60,0.12)] via-white to-[rgba(15,35,66,0.05)] rounded-2xl border border-[rgba(196,151,60,0.35)] p-4 sm:p-5 shadow-sm space-y-3">
