@@ -153,20 +153,33 @@ const loadElection = async () => {
 const loadPositions = async () => {
   try {
     const res = await api.get('positions/')
-    positions.value = res.data || []
+    const next = res.data || []
+    const prev = positions.value || []
+    const same =
+      prev.length === next.length &&
+      next.every((p, idx) => {
+        const cur = prev[idx] || {}
+        return p.id === cur.id && p.name === cur.name && p.name_display === cur.name_display
+      })
+    if (!same) {
+      positions.value = next
+    }
   } catch (err) {
     console.error(err)
   }
 }
 
-const loadCandidates = async () => {
+const loadCandidates = async (options = {}) => {
+  const { silent = false } = options
   if (!positions.value.length) {
     candidatesByPosition.value = {}
     candidateTab.value = null
     return
   }
 
-  candidatesLoading.value = true
+  if (!silent) {
+    candidatesLoading.value = true
+  }
   candidatesError.value = ''
 
   try {
@@ -204,7 +217,9 @@ const loadCandidates = async () => {
     candidatesError.value = 'Failed to load candidate list.'
     candidatesByPosition.value = {}
   } finally {
-    candidatesLoading.value = false
+    if (!silent) {
+      candidatesLoading.value = false
+    }
   }
 }
 
@@ -353,11 +368,11 @@ const refreshElectionData = async () => {
       lastElectionId.value = currentId
       lastSignature.value = signature
       await loadPositions()
-      await loadCandidates()
+      await loadCandidates({ silent: true })
       await loadMyNomination()
     } else {
       // Keep candidates (and their photos) fresh even when timeline is unchanged
-      await loadCandidates()
+      await loadCandidates({ silent: true })
       await loadMyNomination()
     }
   } catch (err) {
@@ -427,10 +442,10 @@ onUnmounted(() => {
         Timeline not set. Waiting for admin to provide dates.
       </div>
 
-      <div v-else class="grid gap-4 lg:grid-cols-[1.05fr_0.95fr] items-start">
+      <div v-else class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
         <!-- Left: Candidates / tally -->
-        <div class="space-y-3">
-          <div class="rounded-2xl bg-gradient-to-br from-[rgba(196,151,60,0.12)] via-white to-[rgba(15,35,66,0.05)] border border-[rgba(196,151,60,0.35)] shadow-inner p-3 sm:p-4 space-y-3">
+        <div class="space-y-3 min-w-0">
+          <div class="rounded-2xl bg-gradient-to-br from-[rgba(196,151,60,0.12)] via-white to-[rgba(15,35,66,0.05)] border border-[rgba(196,151,60,0.35)] shadow-inner p-3 sm:p-4 space-y-3 min-w-0">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div class="flex items-center gap-2">
                 <span class="inline-flex items-center justify-center rounded-full text-[var(--hcad-navy)] text-[11px] font-semibold px-2 py-1 border border-[rgba(196,151,60,0.6)] bg-gradient-to-r from-[rgba(196,151,60,0.18)] to-[rgba(15,35,66,0.08)]">
@@ -500,15 +515,20 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <div v-if="activeCandidates.length" class="candidate-scroll overflow-x-auto w-full md:max-w-[840px]">
-                    <div class="flex gap-4 pb-2 min-h-[320px]">
+                  <div v-if="activeCandidates.length" class="candidate-scroll overflow-x-auto w-full min-w-0">
+                    <div class="candidate-scroll-inner min-h-[320px] snap-x snap-mandatory">
                       <div
                         v-for="cand in activeCandidates"
                         :key="cand.id"
-                        class="bg-[#f7f8fa] border border-slate-200 rounded-2xl shadow-sm p-3 flex flex-col gap-3 min-w-[240px] max-w-[260px]"
+                        class="candidate-card bg-[#f7f8fa] border border-slate-200 rounded-2xl shadow-sm p-3 flex flex-col gap-3 snap-start"
                       >
-                        <div class="rounded-xl overflow-hidden bg-white border border-slate-200 h-[200px] w-full">
-                          <img :src="cand.photo_url || candidatePlaceholder" alt="Candidate" class="h-full w-full object-cover" />
+                        <div class="rounded-xl overflow-hidden bg-white border border-slate-200 h-[220px] md:h-[240px] w-full">
+                          <img
+                            :src="cand.photo_url || candidatePlaceholder"
+                            alt="Candidate"
+                            class="h-full w-full"
+                            :class="cand.photo_url ? 'object-cover' : 'object-contain'"
+                          />
                         </div>
                         <div class="space-y-1">
                           <p class="text-base font-semibold text-slate-900 leading-tight">{{ cand.full_name }}</p>
@@ -529,7 +549,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Right: Nomination form -->
-        <div class="space-y-3">
+        <div class="space-y-3 min-w-0">
           <p
             v-if="myNomination"
             class="text-sm bg-[rgba(196,151,60,0.08)] border border-[rgba(196,151,60,0.35)] rounded-xl p-3"
@@ -680,6 +700,15 @@ onUnmounted(() => {
 .candidate-scroll {
   scrollbar-width: thin;
   scrollbar-color: #c7cbd4 #e5e7eb;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0.5rem 0.5rem 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  box-sizing: border-box;
 }
 
 .candidate-scroll::-webkit-scrollbar {
@@ -696,4 +725,34 @@ onUnmounted(() => {
   background-color: #e5e7eb;
   border-radius: 9999px;
 }
+
+.candidate-scroll-inner {
+  display: flex;
+  gap: 0.75rem;
+  padding-bottom: 0.4rem;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.candidate-card {
+  flex: 0 0 clamp(220px, 28vw, 300px);
+  max-width: clamp(220px, 28vw, 300px);
+  scroll-snap-align: start;
+}
+
+@media (max-width: 900px) {
+  .candidate-card {
+    flex-basis: clamp(220px, 45vw, 300px);
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 640px) {
+  .candidate-card {
+    flex-basis: 90vw;
+    max-width: 92vw;
+  }
+}
+
 </style>

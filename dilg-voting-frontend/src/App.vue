@@ -13,7 +13,6 @@ const router = useRouter()
 const ACCESS_GATE_KEY = 'hcad-access-granted'
 const ACCESS_GATE_NAME_KEY = 'hcad-access-name'
 const ACCESS_GATE_VERSION_KEY = 'hcad-access-version'
-const mobileMenuOpen = ref(false)
 const headerNotifOpen = ref(false)
 const headerNotifItems = ref([])
 const headerNotifUnread = ref(0)
@@ -537,8 +536,8 @@ watch(
               </button>
               <div
                 v-if="voterNotifOpen"
-                class="absolute right-0 mt-2 rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur p-4 z-30"
-                :class="voterNotifOpen ? 'w-96 max-w-md' : ''"
+                class="absolute left-1/2 sm:left-auto sm:right-0 mt-2 rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur p-4 z-30 transform -translate-x-1/2 sm:translate-x-0"
+                :class="voterNotifOpen ? 'w-[calc(100vw-2.5rem)] max-w-[22rem] sm:w-96 sm:max-w-md' : ''"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div>
@@ -548,7 +547,7 @@ watch(
                     </p>
                   </div>
                   <button
-                    class="text-[11px] px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100"
+                    class="text-[11px] px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 min-w-[84px]"
                     @click="loadVoterNotificationsHeader"
                     :disabled="voterNotifLoading"
                   >
@@ -560,7 +559,7 @@ watch(
                 <p v-else-if="!voterNotifItems.length" class="text-[11px] text-slate-500 mt-2">No notifications yet.</p>
                 <ul
                   v-else
-                  class="mt-2 divide-y divide-slate-200 text-[11px] text-slate-700 max-h-64 overflow-y-auto"
+                  class="mt-2 divide-y divide-slate-200 text-[11px] text-slate-700 max-h-[60vh] sm:max-h-64 overflow-y-auto"
                 >
                   <li v-for="n in voterNotifItems" :key="n.id" class="py-2 flex items-start gap-2">
                     <span class="mt-0.5 h-2 w-2 rounded-full" :class="n.is_read ? 'bg-slate-300' : 'bg-emerald-500'"></span>
@@ -586,7 +585,7 @@ watch(
                     </div>
                   </li>
                 </ul>
-                <div class="mt-2 grid grid-cols-2 gap-2">
+                <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     class="inline-flex items-center justify-center w-full text-[11px] px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100"
                     @click="markVoterNotificationsHeaderRead"
@@ -619,58 +618,27 @@ watch(
               Logout
             </button>
           </div>
-
-          <!-- Mobile burger -->
-          <button
-            class="sm:hidden inline-flex items-center justify-center h-10 w-10 rounded-lg border border-slate-200 bg-white/80 shadow-sm"
-            @click="mobileMenuOpen = !mobileMenuOpen"
-            aria-label="Toggle navigation"
-          >
-            <svg v-if="!mobileMenuOpen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-
-          <div
-            v-if="mobileMenuOpen"
-            class="sm:hidden absolute top-full right-4 mt-2 w-56 rounded-2xl border border-slate-200 bg-white shadow-xl p-3 space-y-2"
-          >
-            <div v-if="authStore.isAuthenticated" class="text-xs text-slate-700 border-b border-slate-100 pb-2 mb-2">
-              <p class="font-semibold">{{ authStore.voter?.name }}</p>
-              <p>Voter ID: {{ authStore.voter?.voter_id }}</p>
-            </div>
-            <RouterLink
-              v-for="link in voterLinks"
-              :key="link.to"
-              :to="link.to"
-              class="block px-3 py-2 rounded-lg text-xs hover:bg-slate-100"
-              active-class="bg-emerald-50 text-emerald-700"
-              @click="mobileMenuOpen = false"
-            >
-              {{ link.label }}
-            </RouterLink>
-            <RouterLink
-              v-if="!authStore.isAuthenticated"
-              to="/login"
-              class="block px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs shadow-sm hover:bg-emerald-700"
-              @click="mobileMenuOpen = false"
-            >
-              Voter Login
-            </RouterLink>
-            <button
-              v-else
-              @click="authStore.logout(); $router.push('/login'); mobileMenuOpen = false"
-              class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-left hover:bg-slate-100"
-            >
-              Logout
-            </button>
-          </div>
         </template>
       </div>
     </header>
+
+    <!-- Voter navigation for small screens: keep links visible below the header -->
+    <div v-if="!isAdminContext" class="sm:hidden px-3 pt-3 voter-nav-sticky">
+      <div class="bg-white/95 backdrop-blur border border-slate-200 shadow-xl rounded-2xl p-3">
+        <p class="text-xs font-semibold text-slate-600 mb-2">Navigation</p>
+        <div class="flex flex-wrap gap-2 justify-center text-center">
+          <RouterLink
+            v-for="link in voterLinks"
+            :key="link.to"
+            :to="link.to"
+            class="px-3 py-2 rounded-lg text-xs font-semibold text-slate-800 border border-slate-200 hover:bg-slate-50"
+            active-class="bg-emerald-50 text-emerald-700 border-emerald-200"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </div>
+      </div>
+    </div>
 
     <main :class="['max-w-full mx-0 px-2 sm:px-3 lg:px-4 py-6', isAdminContext ? 'admin-dashboard' : 'voter-shell']">
       <RouterView />
@@ -942,5 +910,12 @@ a[class*='rounded']:active {
   box-shadow: 0 4px 14px rgba(15, 35, 66, 0.12);
   transform: translateY(-1px);
   outline: none;
+}
+
+/* Keep the voter nav card in view on small screens */
+.voter-nav-sticky {
+  position: sticky;
+  top: 4.5rem;
+  z-index: 15;
 }
 </style>

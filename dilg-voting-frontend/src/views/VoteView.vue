@@ -1,6 +1,6 @@
 ﻿<!-- src/views/VoteView.vue -->
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import { countdownTo, formatDateTime, toMs } from '../utils/time'
@@ -23,6 +23,8 @@ const now = ref(Date.now())
 const lastElectionId = ref(null)
 const lastSignature = ref(null)
 const draftRestored = ref(false)
+const scrollContainers = ref({})
+const scrollProgress = ref({})
 
 const isDemoMode = computed(() => election.value?.mode === 'demo')
 const phase = computed(() => {
@@ -153,6 +155,8 @@ const clearBallot = () => {
   hasVoted.value = false
   consent.value = false
   draftRestored.value = false
+  scrollProgress.value = {}
+  scrollContainers.value = {}
 }
 
 const loadMyVotes = async () => {
@@ -211,6 +215,42 @@ const restoreDraft = () => {
 const clearDraft = () => {
   const key = draftKey()
   if (key) localStorage.removeItem(key)
+}
+
+const setScrollRef = (pid, el) => {
+  if (el) {
+    scrollContainers.value = { ...scrollContainers.value, [pid]: el }
+    nextTick(() => updateScrollProgress(pid))
+  }
+}
+
+const updateScrollProgress = (pid) => {
+  const el = scrollContainers.value[pid]
+  if (!el) return
+  const max = el.scrollWidth - el.clientWidth
+  const value = max > 0 ? Math.min(100, Math.max(0, (el.scrollLeft / max) * 100)) : 100
+  scrollProgress.value = { ...scrollProgress.value, [pid]: value }
+}
+
+const updateAllScrollProgress = () => {
+  Object.keys(scrollContainers.value || {}).forEach((pid) => updateScrollProgress(pid))
+}
+
+const handleScrollBarPointer = (pid, evt) => {
+  const el = scrollContainers.value[pid]
+  const bar = evt.currentTarget
+  if (!el || !bar) return
+  const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX
+  const rect = bar.getBoundingClientRect()
+  const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+  const max = el.scrollWidth - el.clientWidth
+  el.scrollLeft = pct * max
+  updateScrollProgress(pid)
+}
+
+const shouldScroll = (positionId) => {
+  const count = candidatesByPosition.value[positionId]?.length || 0
+  return count > 8
 }
 
 const submitBallot = async () => {
@@ -287,9 +327,13 @@ const tick = async () => {
       await loadAllCandidates()
       await loadMyVotes()
       restoreDraft()
+      await nextTick()
+      updateAllScrollProgress()
     } else {
       // Refresh candidates periodically so new photos/bios from admins appear without manual reload.
       await loadAllCandidates()
+      await nextTick()
+      updateAllScrollProgress()
     }
   } catch (e) {
     // ignore transient errors on poll
@@ -310,6 +354,8 @@ onMounted(async () => {
       await loadAllCandidates()
       await loadMyVotes()
       restoreDraft()
+      await nextTick()
+      updateAllScrollProgress()
     }
   } finally {
     loading.value = false
@@ -338,7 +384,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-4 max-w-full overflow-x-hidden">
     <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
         <div class="space-y-1">
@@ -371,11 +417,11 @@ watch(
       Timeline not set. Waiting for admin to provide dates.
     </div>
 
-    <div v-else-if="showBallot" class="grid gap-4">
+    <div v-else-if="showBallot" class="grid gap-4 grid-cols-1">
       <div
         v-for="pos in positions"
         :key="pos.id"
-        class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3"
+        class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3 w-full"
       >
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div class="space-y-0.5">
@@ -387,35 +433,53 @@ watch(
           </div>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label
-            v-for="cand in candidatesByPosition[pos.id] || []"
-            :key="cand.id"
-            class="border rounded-xl p-3 flex gap-3 cursor-pointer hover:border-[rgba(196,151,60,0.6)]"
-            :class="{
-              'border-[var(--hcad-gold)] bg-[rgba(196,151,60,0.12)]': selections[pos.id] === cand.id,
-              'opacity-60 pointer-events-none': hasVoted,
-            }"
-          >
-            <input
-              type="radio"
-              class="mt-1"
-              :name="`pos-${pos.id}`"
-              :value="cand.id"
-              v-model="selections[pos.id]"
-              :disabled="hasVoted || !votingOpen"
-            />
-            <div class="flex gap-3 items-start w-full">
-              <div class="h-10 w-10 rounded-full border border-slate-200 bg-white overflow-hidden flex-shrink-0">
-                <img :src="cand.photo_url || candidatePlaceholder" alt="Candidate photo" class="h-full w-full object-cover" />
+        <div
+          class="candidate-scroll overflow-y-hidden w-full min-w-0"
+          :class="shouldScroll(pos.id) ? 'scroll-enabled' : 'scroll-disabled'"
+          :ref="(el) => { if (shouldScroll(pos.id)) setScrollRef(pos.id, el) }"
+          @scroll="() => updateScrollProgress(pos.id)"
+        >
+          <div class="candidate-scroll-inner">
+            <label
+              v-for="cand in candidatesByPosition[pos.id] || []"
+              :key="cand.id"
+              class="candidate-card border rounded-xl p-5 sm:p-6 min-h-[140px] sm:min-h-[160px] flex gap-5 cursor-pointer hover:border-[rgba(196,151,60,0.6)] snap-start"
+              :class="{
+                'border-[var(--hcad-gold)] bg-[rgba(196,151,60,0.12)]': selections[pos.id] === cand.id,
+                'opacity-60 pointer-events-none': hasVoted,
+              }"
+            >
+              <input
+                type="radio"
+                class="mt-1.5 scale-110"
+                :name="`pos-${pos.id}`"
+                :value="cand.id"
+                v-model="selections[pos.id]"
+                :disabled="hasVoted || !votingOpen"
+              />
+              <div class="flex gap-3 items-start w-full">
+                <div class="h-14 w-14 sm:h-16 sm:w-16 rounded-full border border-slate-200 bg-white overflow-hidden flex-shrink-0">
+                  <img :src="cand.photo_url || candidatePlaceholder" alt="Candidate photo" class="h-full w-full object-cover" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-base sm:text-lg font-semibold truncate">{{ cand.full_name }}</p>
+                  <p class="text-[12px] sm:text-sm text-slate-600">Batch {{ cand.batch_year }} - {{ cand.campus_chapter || 'Campus/Chapter not set' }}</p>
+                  <p class="text-[12px] sm:text-sm text-slate-600 mt-1 whitespace-pre-line leading-snug">{{ cand.bio || 'No bio provided' }}</p>
+                </div>
               </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold truncate">{{ cand.full_name }}</p>
-                <p class="text-[11px] text-slate-500">Batch {{ cand.batch_year }} - {{ cand.campus_chapter || 'Campus/Chapter not set' }}</p>
-                <p class="text-[11px] text-slate-600 mt-1 whitespace-pre-line">{{ cand.bio || 'No bio provided' }}</p>
-              </div>
-            </div>
-          </label>
+            </label>
+          </div>
+        </div>
+        <div
+          v-if="shouldScroll(pos.id)"
+          class="relative mt-1 h-2 rounded-full bg-slate-200/90 overflow-hidden cursor-pointer"
+          @mousedown.prevent="(e) => handleScrollBarPointer(pos.id, e)"
+          @touchstart.prevent="(e) => handleScrollBarPointer(pos.id, e)"
+        >
+          <div
+            class="h-full bg-[var(--hcad-navy)] transition-all duration-150"
+            :style="{ width: (scrollProgress[pos.id] ?? 0) + '%' }"
+          ></div>
         </div>
       </div>
 
@@ -443,3 +507,97 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.candidate-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: #c7cbd4 #e5e7eb;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: block;
+  padding: 0 0.5rem 0.6rem 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable both-edges;
+}
+
+.candidate-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.candidate-scroll::-webkit-scrollbar-thumb {
+  background-color: #c7cbd4;
+  border-radius: 9999px;
+  border: 2px solid #e5e7eb;
+}
+
+.candidate-scroll::-webkit-scrollbar-track {
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+}
+
+.candidate-scroll-inner {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 0.75rem;
+  padding-bottom: 0.4rem;
+  width: max-content;
+  min-width: 0;
+  box-sizing: border-box;
+  contain: content;
+}
+
+.candidate-card {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+}
+
+@media (min-width: 768px) {
+  .candidate-card {
+    width: 100%;
+  }
+  .candidate-scroll-inner {
+    grid-auto-columns: minmax(220px, 1fr);
+  }
+}
+
+@media (min-width: 1100px) {
+  .candidate-card {
+    width: 100%;
+  }
+  .candidate-scroll-inner {
+    grid-auto-columns: minmax(220px, 1fr);
+  }
+}
+
+:global(body) {
+  overflow-x: hidden;
+}
+.scroll-disabled {
+  overflow-x: hidden;
+}
+.scroll-enabled {
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .candidate-scroll {
+    overflow-x: auto;
+  }
+  .scroll-disabled {
+    overflow-x: auto;
+  }
+  .candidate-scroll-inner {
+    grid-auto-columns: minmax(260px, 80vw);
+    min-width: 120%;
+  }
+}
+</style>
